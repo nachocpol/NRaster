@@ -14,9 +14,22 @@ struct PixelRGBA32
 
 struct Vertex
 {
-	Vec3 V0;
-	Vec3 V1;
-	Vec3 V2;
+	Vertex()
+	{
+	}
+	Vertex(const Vec3& _position) : 
+		  Position(_position) 
+	{
+	}
+	Vertex(const Vec3& _position, const Vec3& _color, const Vec2& _texcoord) : 
+		  Position(_position) 
+		, Color(_color)
+		, TexCoord(_texcoord)
+	{
+	}
+	Vec3 Position;
+	Vec3 Color;
+	Vec2 TexCoord;
 };
 
 struct GraphicsContext
@@ -38,8 +51,10 @@ void CleanUp();
 
 void TestSDL(PixelRGBA32* pixels, int width, int height);
 void TestRaster(PixelRGBA32* pixels, int width, int height);
-void RasterTriangle(PixelRGBA32* pixels,Vec3* positions, int width, int height);
+void RasterTriangle(PixelRGBA32* pixels, Vertex* vtx, int width, int height);
 bool PollEvents();
+
+void RenderScene(PixelRGBA32* pixels, int width, int height);
 
 int main(int, char**)
 {
@@ -70,29 +85,13 @@ int main(int, char**)
 		SDL_LockTexture(gContext.Framebuffer, NULL, &pData, &pitch);
 		{
 			// TestSDL((PixelRGBA32*)pData, gContext.Width, gContext.Height);
-			// TestRaster((PixelRGBA32*)pData, gContext.Width, gContext.Height);
-
-			Vec3 pts[3];
-			{
-				pts[0] = Vec3(0.0f, 0.5f, 0.3f);
-				pts[1] = Vec3(-0.5f, -0.5f, 0.3f);
-				pts[2] = Vec3(0.5f, -0.5f, 0.3f);
-			}
-			Vec3 pts2[3];
-			{
-				pts2[0] = Vec3(0.0f, 0.25f, 0.2f);
-				pts2[1] = Vec3(-0.25f, -0.65f, 0.2f);
-				pts2[2] = Vec3(0.25f, -0.65f, 0.9f);
-			}
-
-			RasterTriangle((PixelRGBA32*)pData, pts, gContext.Width, gContext.Height);
-			RasterTriangle((PixelRGBA32*)pData, pts2, gContext.Width, gContext.Height);
-
+			TestRaster((PixelRGBA32*)pData, gContext.Width, gContext.Height);
 
 		}
 		SDL_UnlockTexture(gContext.Framebuffer);
 		SDL_RenderCopy(gContext.Renderer, gContext.Framebuffer, NULL, NULL);
 
+		// Debug depth buffer:
 		{
 			void* debugDepth = nullptr;
 			int pitch;
@@ -137,7 +136,7 @@ bool InitSDL()
 
 bool InitWindowAndRenderer()
 {
-	gContext.Window = SDL_CreateWindow("NRaster", 100, 100, 1024, 720, SDL_WINDOW_SHOWN);
+	gContext.Window = SDL_CreateWindow("NRaster", 100, 100, gContext.Width, gContext.Height, SDL_WINDOW_SHOWN);
 	if (gContext.Window == nullptr)
 	{
 		CleanUp();
@@ -204,21 +203,30 @@ float EdgeTest(const Vec3& a, const Vec3& b, const Vec3& c)
 
 void TestRaster(PixelRGBA32* pixels, int width, int height)
 {
-	Vec3 pts[3];
+	Vertex tri0[3];
+	{
+		tri0[0] = Vertex(Vec3(0.0f, 0.5f, 0.5f), Vec3(1.0f, 0.0f, 0.0f), Vec2(0.0f, 1.0f));
+		tri0[1] = Vertex(Vec3(-0.5f, -0.5f, 0.2f), Vec3(0.0f, 1.0f, 0.0f), Vec2(1.0f, 0.0f));
+		tri0[2] = Vertex(Vec3(0.5f, -0.5f, 0.2f), Vec3(0.0f, 0.0f, 1.0f), Vec2(1.0f, 1.0f));
+	}
 
-	// Triangle in NDC space [-1,1]
-	pts[0] = Vec3(0.0f, 0.5f, 0.0f);
-	pts[1] = Vec3(-0.5f, -0.5f, 0.0f);
-	pts[2] = Vec3(0.5f, -0.5f, 0.0f);
+	Vertex tri1[3];
+	{
+		tri1[0] = Vertex(Vec3(0.0f, 0.25f, 0.25f));
+		tri1[1] = Vertex(Vec3(-0.25f, -0.65f, 0.3f));
+		tri1[2] = Vertex(Vec3(0.25f, -0.65f, 0.3f));
+	}
 
-	RasterTriangle(pixels, pts, width, height);
+	RasterTriangle(pixels, tri0, gContext.Width, gContext.Height);
+	RasterTriangle(pixels, tri1, gContext.Width, gContext.Height);
 }
 
-void RasterTriangle(PixelRGBA32* pixels, Vec3* positions, int width, int height)
+void RasterTriangle(PixelRGBA32* pixels, Vertex* vtx, int width, int height)
 {
-	Vec3 v0 = positions[0];
-	Vec3 v1 = positions[1];
-	Vec3 v2 = positions[2];
+	// [CCW]
+	Vec3 v0 = vtx[0].Position;
+	Vec3 v1 = vtx[1].Position;
+	Vec3 v2 = vtx[2].Position;
 
 	// Convert into screen position (note that we flip the y)
 	Vec3 rasterv0((v0.x * 0.5f + 0.5f) * width, (1.0f - (v0.y * 0.5f + 0.5f)) * height, v0.z);
@@ -245,9 +253,9 @@ void RasterTriangle(PixelRGBA32* pixels, Vec3* positions, int width, int height)
 			Vec3 rasterPixel(sx, sy, 0.0f);
 
 			// Areas of the parallelograms [rastervx, rastervy, rasterPixel]
-			float w0 = EdgeTest(rasterv0, rasterv1, rasterPixel);
-			float w1 = EdgeTest(rasterv1, rasterv2, rasterPixel);
-			float w2 = EdgeTest(rasterv2, rasterv0, rasterPixel);
+			float w0 = EdgeTest(rasterv1, rasterv2, rasterPixel);
+			float w1 = EdgeTest(rasterv2, rasterv0, rasterPixel);
+			float w2 = EdgeTest(rasterv0, rasterv1, rasterPixel);
 
 			if ((w0 >= 0.0f) && (w1 >= 0.0f) && (w2 >= 0.0f))
 			{
@@ -291,4 +299,8 @@ bool PollEvents()
 		}
 	}
 	return false;
+}
+
+void RenderScene(PixelRGBA32 * pixels, int width, int height)
+{
 }
