@@ -1,8 +1,19 @@
+#include <chrono>
+#include <smmintrin.h>
 #include <iostream>
 #include <SDL.h>
-#include "NMath.h"
 
-using namespace math;
+// #define TEST_HLSLPP
+
+#if defined(TEST_HLSLPP)
+	#include "hlsl++.h"
+	using namespace hlslpp;
+#else
+	#include "NMath.h"
+	using namespace math;
+	#define float3 Vec3
+	#define float2 Vec2
+#endif
 
 struct PixelRGBA32
 { 
@@ -17,19 +28,19 @@ struct Vertex
 	Vertex()
 	{
 	}
-	Vertex(const Vec3& _position) : 
+	Vertex(const float3& _position) : 
 		  Position(_position) 
 	{
 	}
-	Vertex(const Vec3& _position, const Vec3& _color, const Vec2& _texcoord) : 
+	Vertex(const float3& _position, const float3& _color, const float2& _texcoord) :
 		  Position(_position) 
 		, Color(_color)
 		, TexCoord(_texcoord)
 	{
 	}
-	Vec3 Position;
-	Vec3 Color;
-	Vec2 TexCoord;
+	float3 Position;
+	float3 Color;
+	float2 TexCoord;
 };
 
 struct GraphicsContext
@@ -84,9 +95,13 @@ int main(int, char**)
 		int pitch = 0;
 		SDL_LockTexture(gContext.Framebuffer, NULL, &pData, &pitch);
 		{
-			// TestSDL((PixelRGBA32*)pData, gContext.Width, gContext.Height);
+			auto start = std::chrono::system_clock::now();
+			
 			TestRaster((PixelRGBA32*)pData, gContext.Width, gContext.Height);
 
+			auto end = std::chrono::system_clock::now();
+			std::chrono::duration<double> diff = end - start;
+			std::cout << diff.count() * 1000.0 << "ms.\n";
 		}
 		SDL_UnlockTexture(gContext.Framebuffer);
 		SDL_RenderCopy(gContext.Renderer, gContext.Framebuffer, NULL, NULL);
@@ -198,7 +213,7 @@ void TestSDL(PixelRGBA32* pixels, int width, int height)
 }
 
 
-float EdgeTest(const Vec3& a, const Vec3& b, const Vec3& c)
+float EdgeTest(const float3& a, const float3& b, const float3& c)
 {
 	return ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x));
 }
@@ -216,16 +231,16 @@ void TestRaster(PixelRGBA32* pixels, int width, int height)
 
 	Vertex tri0[3];
 	{
-		tri0[0] = Vertex(Vec3(-0.5f, 0.5f, 0.4f), Vec3(1.0f, 0.0f, 0.0f), Vec2(0.0f, 0.0f));	// Top-left
-		tri0[1] = Vertex(Vec3(-0.5f, -0.5f, 0.4f), Vec3(0.0f, 1.0f, 0.0f), Vec2(0.0f, 1.0f));	// Bot-left
-		tri0[2] = Vertex(Vec3(0.5f, -0.5f, 0.4f), Vec3(0.0f, 0.0f, 1.0f), Vec2(1.0f, 1.0f));	// Bot-right
+		tri0[0] = Vertex(float3(-0.5f, 0.5f, 0.9f), float3(1.0f, 0.0f, 0.0f), float2(0.0f, 0.0f));	// Top-left
+		tri0[1] = Vertex(float3(-0.5f, -0.5f, 0.4f), float3(0.0f, 1.0f, 0.0f), float2(0.0f, 1.0f));	// Bot-left
+		tri0[2] = Vertex(float3(0.5f, -0.5f, 0.4f), float3(0.0f, 0.0f, 1.0f), float2(1.0f, 1.0f));	// Bot-right
 	}
 
 	Vertex tri1[3];
 	{
-		tri1[0] = Vertex(Vec3(-0.5f, 0.5f, 0.4f), Vec3(1.0f, 0.0f, 0.0f), Vec2(0.0f, 0.0f));	// Top-lef
-		tri1[1] = Vertex(Vec3(0.5f, -0.5f, 0.4f), Vec3(0.0f, 1.0f, 0.0f), Vec2(1.0f, 1.0f));	// Bot-right
-		tri1[2] = Vertex(Vec3(0.5f, 0.5f, 0.4f), Vec3(0.0f, 0.0f, 1.0f), Vec2(1.0f, 0.0f));		// Top-right
+		tri1[0] = Vertex(float3(-0.5f, 0.5f, 0.9f), float3(1.0f, 0.0f, 0.0f), float2(0.0f, 0.0f));	// Top-lef
+		tri1[1] = Vertex(float3(0.5f, -0.5f, 0.4f), float3(0.0f, 1.0f, 0.0f), float2(1.0f, 1.0f));	// Bot-right
+		tri1[2] = Vertex(float3(0.5f, 0.5f, 0.9f), float3(0.0f, 0.0f, 1.0f), float2(1.0f, 0.0f));	// Top-right
 	}
 
 	RasterTriangle(pixels, tri0, gContext.Width, gContext.Height);
@@ -235,14 +250,14 @@ void TestRaster(PixelRGBA32* pixels, int width, int height)
 void RasterTriangle(PixelRGBA32* pixels, Vertex* vtx, int width, int height)
 {
 	// [CCW]
-	Vec3 v0 = vtx[0].Position;
-	Vec3 v1 = vtx[1].Position;
-	Vec3 v2 = vtx[2].Position;
+	float3 v0 = vtx[0].Position;
+	float3 v1 = vtx[1].Position;
+	float3 v2 = vtx[2].Position;
 
 	// Convert into screen position (note that we flip the y)
-	Vec3 rasterv0((v0.x * 0.5f + 0.5f) * width, (1.0f - (v0.y * 0.5f + 0.5f)) * height, v0.z);
-	Vec3 rasterv1((v1.x * 0.5f + 0.5f) * width, (1.0f - (v1.y * 0.5f + 0.5f)) * height, v1.z);
-	Vec3 rasterv2((v2.x * 0.5f + 0.5f) * width, (1.0f - (v2.y * 0.5f + 0.5f)) * height, v2.z);
+	float3 rasterv0((v0.x * 0.5f + 0.5f) * width, (1.0f - (v0.y * 0.5f + 0.5f)) * height, v0.z);
+	float3 rasterv1((v1.x * 0.5f + 0.5f) * width, (1.0f - (v1.y * 0.5f + 0.5f)) * height, v1.z);
+	float3 rasterv2((v2.x * 0.5f + 0.5f) * width, (1.0f - (v2.y * 0.5f + 0.5f)) * height, v2.z);
 
 	// We use 1 / V.z to calculate the current pixel depth
 	//	1 / P.z =  (1 / V0.z) * D0 + (1 / V1.z) * D1 + (1 / V2.z) * D2
@@ -257,16 +272,16 @@ void RasterTriangle(PixelRGBA32* pixels, Vertex* vtx, int width, int height)
 	//  Finally, mult interpolated result by pixel z.
 	
 	// TexCoords (we mult z as z = 1/z)
-	Vec2 rasterTexCoord0 = Vec2(vtx[0].TexCoord.x * depthRcp0, vtx[0].TexCoord.y * depthRcp0);
-	Vec2 rasterTexCoord1 = Vec2(vtx[1].TexCoord.x * depthRcp1, vtx[1].TexCoord.y * depthRcp1);
-	Vec2 rasterTexCoord2 = Vec2(vtx[2].TexCoord.x * depthRcp2, vtx[2].TexCoord.y * depthRcp2);
+	float2 rasterTexCoord0 = float2(vtx[0].TexCoord.x * depthRcp0, vtx[0].TexCoord.y * depthRcp0);
+	float2 rasterTexCoord1 = float2(vtx[1].TexCoord.x * depthRcp1, vtx[1].TexCoord.y * depthRcp1);
+	float2 rasterTexCoord2 = float2(vtx[2].TexCoord.x * depthRcp2, vtx[2].TexCoord.y * depthRcp2);
 
 	float area = EdgeTest(rasterv0, rasterv1, rasterv2);
 	for (int sy = 0; sy < height; ++sy)
 	{
 		for (int sx = 0; sx < width; ++sx)
 		{
-			Vec3 rasterPixel((float)sx + 0.5f, (float)sy + 0.5f, 0.0f); // +0.5->center pixel
+			float3 rasterPixel((float)sx + 0.5f, (float)sy + 0.5f, 0.0f); // +0.5->center pixel
 
 			// Areas of the parallelograms [rastervx, rastervy, rasterPixel]
 			float w0 = EdgeTest(rasterv1, rasterv2, rasterPixel);
@@ -290,7 +305,7 @@ void RasterTriangle(PixelRGBA32* pixels, Vertex* vtx, int width, int height)
 					gContext.DepthBuffer[sy * gContext.Width + sx] = pixelDepth;
 
 					// Perspective correct TexCoords:
-					Vec2 intTexCoord;
+					float2 intTexCoord;
 					intTexCoord.x = (rasterTexCoord0.x * w0 + rasterTexCoord1.x * w1 + rasterTexCoord2.x * w2) * pixelDepth;
 					intTexCoord.y = (rasterTexCoord0.y * w0 + rasterTexCoord1.y * w1 + rasterTexCoord2.y * w2) * pixelDepth;
 
@@ -298,27 +313,13 @@ void RasterTriangle(PixelRGBA32* pixels, Vertex* vtx, int width, int height)
 					PixelRGBA32* cur = pixels;
 					cur += sy * width + sx;
 
-					const int M = 10;
-					float checker = (fmod(intTexCoord.x * M, 1.0) > 0.5) ^ (fmod(intTexCoord.y * M, 1.0) < 0.5);
+					float M = 10.0f;
+					//float checker = (fmod(intTexCoord.x * M, 1.0f) > 0.5f) ^ (fmod(intTexCoord.y * M, 1.0f) < 0.5f);
 
 					PixelRGBA32 newPixel;
-					newPixel.R = uint8_t(checker * 255.0f);
-					newPixel.G = uint8_t(checker * 255.0f);
-					newPixel.B = uint8_t(checker * 255.0f);
-					newPixel.A = 0xff;
-
-					*cur = newPixel;
-				}
-				else
-				{
-					// Pixel color:
-					PixelRGBA32* cur = pixels;
-					cur += sy * width + sx;
-
-					PixelRGBA32 newPixel;
-					newPixel.R = 0xdd;
-					newPixel.G = 0xdd;
-					newPixel.B = 0xdd;
+					newPixel.R = uint8_t(intTexCoord.x * 255.0f);
+					newPixel.G = uint8_t(0.0f * 255.0f);
+					newPixel.B = uint8_t(0.0f * 255.0f);
 					newPixel.A = 0xff;
 
 					*cur = newPixel;
