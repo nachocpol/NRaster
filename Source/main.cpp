@@ -2,12 +2,19 @@
 #include <smmintrin.h>
 #include <iostream>
 #include <SDL.h>
+#include <glm.hpp>
 
-// #define TEST_HLSLPP
+//#define TEST_HLSLPP
+#define TEST_GLM
 
 #if defined(TEST_HLSLPP)
 	#include "hlsl++.h"
 	using namespace hlslpp;
+#elif defined(TEST_GLM)
+	#include "glm.hpp"
+	using namespace glm;
+	#define float3 vec3
+	#define float2 vec2
 #else
 	#include "NMath.h"
 	using namespace math;

@@ -28,11 +28,13 @@ project "NRaster"
 	{
 		"Source/",
 		"Dependencies/SDL2-2.0.9/include/",
-		"Dependencies/hlslpp/include/"
+		"Dependencies/hlslpp/include/",
+		"Dependencies/glm/glm/"
 	}
 
 	libdirs {"Dependencies/SDL2-2.0.9/lib/x64/"}
 	links   {"SDL2","SDL2main"}
+   		
    
 
 
