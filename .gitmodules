@@ -1,3 +1,7 @@
 [submodule "Dependencies/hlslpp"]
 	path = Dependencies/hlslpp
 	url = https://github.com/redorav/hlslpp.git
+[submodule "Dependencies/glm"]
+	path = Dependencies/glm
+	url = https://github.com/g-truc/glm.git
+	branch = 0.9.8
