@@ -60,8 +60,8 @@ struct GraphicsContext
 	SDL_Texture* DepthBufferDebug;
 	float* DepthBuffer;
 
-	int Width = 1920;
-	int Height = 1080;
+	int Width = 1024;
+	int Height = 720;
 }gContext;
 
 
