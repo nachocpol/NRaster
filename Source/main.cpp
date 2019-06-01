@@ -41,6 +41,11 @@ struct Vertex
 		  Position(_position.x, _position.y, _position.z, 1.0f)
 	{
 	}
+	Vertex(const float3& _position, const float3& _normal) :
+		  Position(_position.x, _position.y, _position.z, 1.0f)
+		, Normal(_normal.x, _normal.y, _normal.z)
+	{
+	}
 	Vertex(const float3& _position, const float3& _color, const float2& _texcoord) :
 		  Position(_position.x, _position.y, _position.z, 1.0f)
 		, Color(_color)
@@ -48,6 +53,7 @@ struct Vertex
 	{
 	}
 	float4 Position;
+	float3 Normal;
 	float3 Color;
 	float2 TexCoord;
 };
@@ -122,7 +128,9 @@ int main(int, char**)
 			}
 
 			auto start = std::chrono::system_clock::now();
+			
 			RenderScene((PixelRGBA32*)pData, gContext.Width, gContext.Height);
+
 			auto end = std::chrono::system_clock::now();
 			std::chrono::duration<double> diff = end - start;
 			std::cout << diff.count() * 1000.0 << "ms.\n";
@@ -255,16 +263,16 @@ void TestRaster(PixelRGBA32* pixels, int width, int height)
 
 	Vertex tri0[3];
 	{
-		tri0[0] = Vertex(float3(-0.5f, 0.5f, 0.9f), float3(1.0f, 0.0f, 0.0f), float2(0.0f, 0.0f));	// Top-left
+		tri0[0] = Vertex(float3(-0.5f, 0.5f, 0.4f), float3(1.0f, 0.0f, 0.0f), float2(0.0f, 0.0f));	// Top-left
 		tri0[1] = Vertex(float3(-0.5f, -0.5f, 0.4f), float3(0.0f, 1.0f, 0.0f), float2(0.0f, 1.0f));	// Bot-left
 		tri0[2] = Vertex(float3(0.5f, -0.5f, 0.4f), float3(0.0f, 0.0f, 1.0f), float2(1.0f, 1.0f));	// Bot-right
 	}
 
 	Vertex tri1[3];
 	{
-		tri1[0] = Vertex(float3(-0.5f, 0.5f, 0.9f), float3(1.0f, 0.0f, 0.0f), float2(0.0f, 0.0f));	// Top-lef
+		tri1[0] = Vertex(float3(-0.5f, 0.5f, 0.4f), float3(1.0f, 0.0f, 0.0f), float2(0.0f, 0.0f));	// Top-lef
 		tri1[1] = Vertex(float3(0.5f, -0.5f, 0.4f), float3(0.0f, 1.0f, 0.0f), float2(1.0f, 1.0f));	// Bot-right
-		tri1[2] = Vertex(float3(0.5f, 0.5f, 0.9f), float3(0.0f, 0.0f, 1.0f), float2(1.0f, 0.0f));	// Top-right
+		tri1[2] = Vertex(float3(0.5f, 0.5f, 0.4f), float3(0.0f, 0.0f, 1.0f), float2(1.0f, 0.0f));	// Top-right
 	}
 
 	RasterTriangle(pixels, tri0, gContext.Width, gContext.Height);
@@ -290,20 +298,31 @@ void RasterTriangle(PixelRGBA32* pixels, Vertex* vtx, int width, int height)
 	rasterv2.z = 1.0f / rasterv2.z;
 	
 	// Attribute correct interpolation:
-	//	att0 /= raster0.z
-	// ...
-	//  Then use the bary coords as usual.
-	//  Finally, mult interpolated result by pixel z.
+	//	1) att0 /= raster0.z
+	//  2) Find cur attribute using bary coords
+	//  3) Finally, mult by z
 	
-	// TexCoords (we mult z as z = 1/z)
-	float2 rasterTexCoord0 = float2(vtx[0].TexCoord.x * rasterv0.z, vtx[0].TexCoord.y * rasterv0.z);
-	float2 rasterTexCoord1 = float2(vtx[1].TexCoord.x * rasterv1.z, vtx[1].TexCoord.y * rasterv1.z);
-	float2 rasterTexCoord2 = float2(vtx[2].TexCoord.x * rasterv2.z, vtx[2].TexCoord.y * rasterv2.z);
+	// TexCoords
+	float2 rasterTexCoord0 = vtx[0].TexCoord * rasterv0.z;
+	float2 rasterTexCoord1 = vtx[1].TexCoord * rasterv1.z;
+	float2 rasterTexCoord2 = vtx[2].TexCoord * rasterv2.z;
+	// Normals
+	float3 rasterNormal0 = vtx[0].Normal * rasterv0.z;
+	float3 rasterNormal1 = vtx[1].Normal * rasterv1.z;
+	float3 rasterNormal2 = vtx[2].Normal * rasterv2.z;
 
+	// Triangle bounding quad:
+	int minX = min(min(rasterv0.x, rasterv1.x), rasterv2.x);
+	int minY = min(min(rasterv0.y, rasterv1.y), rasterv2.y);
+	int maxX = max(max(rasterv0.x, rasterv1.x), rasterv2.x);
+	int maxY = max(max(rasterv0.y, rasterv1.y), rasterv2.y);
+
+	// Pre calc 1 over area of the tri:
 	float areaRcp = 1.0f / EdgeTest(rasterv0, rasterv1, rasterv2);
-	for (int sy = 0; sy < height; ++sy)
+
+	for (int sy = minY; sy <= maxY; ++sy)
 	{
-		for (int sx = 0; sx < width; ++sx)
+		for (int sx = minX; sx <= maxX; ++sx)
 		{
 			float3 rasterPixel((float)sx + 0.5f, (float)sy + 0.5f, 0.0f); // +0.5->center pixel
 
@@ -327,21 +346,17 @@ void RasterTriangle(PixelRGBA32* pixels, Vertex* vtx, int width, int height)
 					// Update depth buffer:
 					gContext.DepthBuffer[sy * gContext.Width + sx] = pixelDepth;
 
-					// Perspective correct TexCoords:
-					float2 intTexCoord;
-					intTexCoord.x = (rasterTexCoord0.x * w0 + rasterTexCoord1.x * w1 + rasterTexCoord2.x * w2) * pixelDepth;
-					intTexCoord.y = (rasterTexCoord0.y * w0 + rasterTexCoord1.y * w1 + rasterTexCoord2.y * w2) * pixelDepth;
+					// Perspective correct attributes:
+					float2 TexCoord = (rasterTexCoord0 * w0 + rasterTexCoord1 * w1 + rasterTexCoord2 * w2 ) * pixelDepth;
+					float3 Normal = (rasterNormal0 * w0 + rasterNormal1 * w1 + rasterNormal2 * w2) * pixelDepth;
 
 					// Pixel color:
 					PixelRGBA32* cur = pixels;
 					cur += sy * width + sx;
 
-					//float M = 10.0f;
-					//float checker = (fmod(intTexCoord.x * M, 1.0f) > 0.5f) ^ (fmod(intTexCoord.y * M, 1.0f) < 0.5f);
-
 					PixelRGBA32 newPixel;
 					newPixel.R = uint8_t(1.0f * 255.0f);
-					newPixel.G = uint8_t(1.0f * 255.0f);
+					newPixel.G = uint8_t(0.0f * 255.0f);
 					newPixel.B = uint8_t(1.0f * 255.0f);
 					newPixel.A = 0xff;
 
@@ -423,7 +438,7 @@ void RenderScene(PixelRGBA32* pixels, int width, int height)
 	worldFromObject = glm::rotate(worldFromObject, -time, vec3(1.0f, 0.0f, 0.0f));
 	worldFromObject = glm::rotate(worldFromObject, -time, vec3(1.0f, 0.0f, 1.0f));
 	auto viewFromWorld = glm::lookAtLH(vec3(0.0f, 0.0f, -10.0f), vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f));
-	auto screenFromView = glm::perspectiveFovLH(glm::radians(75.0f), (float)gContext.Width, (float)gContext.Height, 0.5f, 100.0f);
+	auto screenFromView = glm::perspectiveFovLH(glm::radians(75.0f), (float)gContext.Width, (float)gContext.Height, 0.5f, 50.0f);
 	time += 0.024f;
 
 	for (int i = 0; i < 36; i += 3)
