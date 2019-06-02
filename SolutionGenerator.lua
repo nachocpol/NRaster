@@ -24,12 +24,15 @@ project "NRaster"
 	location 	"Temp/VSFiles"
 	targetdir 	"Binaries/%{cfg.platform}/%{cfg.buildcfg}"
 	files 		{ "Source/**.cpp","Source/**.h" }
+	files 		{"Dependencies/tinythreads/source/*.cpp"}
 	includedirs 
 	{
 		"Source/",
 		"Dependencies/SDL2-2.0.9/include/",
 		"Dependencies/hlslpp/include/",
-		"Dependencies/glm/glm/"
+		"Dependencies/glm/glm/",
+		"Dependencies/tinyobj/",
+		"Dependencies/tinythreads/source"
 	}
 
 	libdirs {"Dependencies/SDL2-2.0.9/lib/x64/"}

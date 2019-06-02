@@ -3,60 +3,12 @@
 #include <iostream>
 #include <SDL.h>
 
-//#define TEST_HLSLPP
-#define TEST_GLM
+#include "NModel.h"
+#include "NRaster.h"
 
-#if defined(TEST_HLSLPP)
-	#include "hlsl++.h"
-	using namespace hlslpp;
-#elif defined(TEST_GLM)
-	#include "glm.hpp"
-	#include "matrix.hpp"
-	#include "gtc/matrix_transform.hpp"
-	using namespace glm;
-	#define float4 vec4
-	#define float3 vec3
-	#define float2 vec2
-#else
-	#include "NMath.h"
-	using namespace math;
-	#define float3 Vec3
-	#define float2 Vec2
-#endif
-
-struct PixelRGBA32
-{ 
-	uint8_t A;
-	uint8_t B;
-	uint8_t G;
-	uint8_t R;
-};
-
-struct Vertex
-{
-	Vertex()
-	{
-	}
-	Vertex(const float3& _position) : 
-		  Position(_position.x, _position.y, _position.z, 1.0f)
-	{
-	}
-	Vertex(const float3& _position, const float3& _normal) :
-		  Position(_position.x, _position.y, _position.z, 1.0f)
-		, Normal(_normal.x, _normal.y, _normal.z)
-	{
-	}
-	Vertex(const float3& _position, const float3& _color, const float2& _texcoord) :
-		  Position(_position.x, _position.y, _position.z, 1.0f)
-		, Color(_color)
-		, TexCoord(_texcoord)
-	{
-	}
-	float4 Position;
-	float3 Normal;
-	float3 Color;
-	float2 TexCoord;
-};
+#include "glm.hpp"
+#include "matrix.hpp"
+#include "gtc/matrix_transform.hpp"
 
 struct GraphicsContext
 {
@@ -77,15 +29,18 @@ void CleanUp();
 
 void TestSDL(PixelRGBA32* pixels, int width, int height);
 void TestRaster(PixelRGBA32* pixels, int width, int height);
-void RasterTriangle(PixelRGBA32* pixels, Vertex* vtx, int width, int height);
 bool PollEvents();
 
 void RenderScene(PixelRGBA32* pixels, int width, int height);
+
+NModel cubeModel;
 
 int main(int, char**)
 {
 	InitSDL();
 	InitWindowAndRenderer();
+
+	cubeModel.LoadFromfile("../../Data/suzanne.obj");
 
 	bool exit = false;
 	while (!exit)
@@ -244,12 +199,6 @@ void TestSDL(PixelRGBA32* pixels, int width, int height)
 	}
 }
 
-
-float EdgeTest(const float3& a, const float3& b, const float3& c)
-{
-	return ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x));
-}
-
 void TestRaster(PixelRGBA32* pixels, int width, int height)
 {
 	/*
@@ -263,109 +212,20 @@ void TestRaster(PixelRGBA32* pixels, int width, int height)
 
 	Vertex tri0[3];
 	{
-		tri0[0] = Vertex(float3(-0.5f, 0.5f, 0.4f), float3(1.0f, 0.0f, 0.0f), float2(0.0f, 0.0f));	// Top-left
-		tri0[1] = Vertex(float3(-0.5f, -0.5f, 0.4f), float3(0.0f, 1.0f, 0.0f), float2(0.0f, 1.0f));	// Bot-left
-		tri0[2] = Vertex(float3(0.5f, -0.5f, 0.4f), float3(0.0f, 0.0f, 1.0f), float2(1.0f, 1.0f));	// Bot-right
+		tri0[0] = Vertex(glm::vec3(-0.5f, 0.5f, 0.4f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.0f, 0.0f));	// Top-left
+		tri0[1] = Vertex(glm::vec3(-0.5f, -0.5f, 0.4f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(0.0f, 1.0f));	// Bot-left
+		tri0[2] = Vertex(glm::vec3(0.5f, -0.5f, 0.4f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec2(1.0f, 1.0f));	// Bot-right
 	}
 
 	Vertex tri1[3];
 	{
-		tri1[0] = Vertex(float3(-0.5f, 0.5f, 0.4f), float3(1.0f, 0.0f, 0.0f), float2(0.0f, 0.0f));	// Top-lef
-		tri1[1] = Vertex(float3(0.5f, -0.5f, 0.4f), float3(0.0f, 1.0f, 0.0f), float2(1.0f, 1.0f));	// Bot-right
-		tri1[2] = Vertex(float3(0.5f, 0.5f, 0.4f), float3(0.0f, 0.0f, 1.0f), float2(1.0f, 0.0f));	// Top-right
-	}
-
-	RasterTriangle(pixels, tri0, gContext.Width, gContext.Height);
-	RasterTriangle(pixels, tri1, gContext.Width, gContext.Height);
-}
-
-void RasterTriangle(PixelRGBA32* pixels, Vertex* vtx, int width, int height)
-{
-	// [CCW]
-	float3 v0 = vtx[0].Position;
-	float3 v1 = vtx[1].Position;
-	float3 v2 = vtx[2].Position;
-
-	// Convert into screen position (note that we flip the y)
-	float3 rasterv0((v0.x * 0.5f + 0.5f) * width, (1.0f - (v0.y * 0.5f + 0.5f)) * height, v0.z);
-	float3 rasterv1((v1.x * 0.5f + 0.5f) * width, (1.0f - (v1.y * 0.5f + 0.5f)) * height, v1.z);
-	float3 rasterv2((v2.x * 0.5f + 0.5f) * width, (1.0f - (v2.y * 0.5f + 0.5f)) * height, v2.z);
-
-	// We use 1 / V.z to calculate the current pixel depth
-	//	1 / P.z =  (1 / V0.z) * D0 + (1 / V1.z) * D1 + (1 / V2.z) * D2
-	rasterv0.z = 1.0f / rasterv0.z;
-	rasterv1.z = 1.0f / rasterv1.z;
-	rasterv2.z = 1.0f / rasterv2.z;
-	
-	// Attribute correct interpolation:
-	//	1) att0 /= raster0.z
-	//  2) Find cur attribute using bary coords
-	//  3) Finally, mult by z
-	
-	// TexCoords
-	float2 rasterTexCoord0 = vtx[0].TexCoord * rasterv0.z;
-	float2 rasterTexCoord1 = vtx[1].TexCoord * rasterv1.z;
-	float2 rasterTexCoord2 = vtx[2].TexCoord * rasterv2.z;
-	// Normals
-	float3 rasterNormal0 = vtx[0].Normal * rasterv0.z;
-	float3 rasterNormal1 = vtx[1].Normal * rasterv1.z;
-	float3 rasterNormal2 = vtx[2].Normal * rasterv2.z;
-
-	// Triangle bounding quad:
-	int minX = min(min(rasterv0.x, rasterv1.x), rasterv2.x);
-	int minY = min(min(rasterv0.y, rasterv1.y), rasterv2.y);
-	int maxX = max(max(rasterv0.x, rasterv1.x), rasterv2.x);
-	int maxY = max(max(rasterv0.y, rasterv1.y), rasterv2.y);
-
-	// Pre calc 1 over area of the tri:
-	float areaRcp = 1.0f / EdgeTest(rasterv0, rasterv1, rasterv2);
-
-	for (int sy = minY; sy <= maxY; ++sy)
-	{
-		for (int sx = minX; sx <= maxX; ++sx)
-		{
-			float3 rasterPixel((float)sx + 0.5f, (float)sy + 0.5f, 0.0f); // +0.5->center pixel
-
-			// Areas of the parallelograms [rastervx, rastervy, rasterPixel]
-			float w0 = EdgeTest(rasterv1, rasterv2, rasterPixel);
-			float w1 = EdgeTest(rasterv2, rasterv0, rasterPixel);
-			float w2 = EdgeTest(rasterv0, rasterv1, rasterPixel);
-
-			if ((w0 >= 0.0f) && (w1 >= 0.0f) && (w2 >= 0.0f))
-			{
-				// Barycentric coordinates. Ratio between the area of the triangle 
-				// and ratio of the area of each vx,vy,pixel. Note that we do not divide by 2, as it cancels out.
-				w0 *= areaRcp;
-				w1 *= areaRcp;
-				w2 *= areaRcp;
-
-				// Depth test [LESS_THAN]:
-				float pixelDepth = 1.0f / (rasterv0.z * w0 + rasterv1.z * w1 + rasterv2.z * w2);
-				if (pixelDepth < gContext.DepthBuffer[sy * width + sx])
-				{
-					// Update depth buffer:
-					gContext.DepthBuffer[sy * gContext.Width + sx] = pixelDepth;
-
-					// Perspective correct attributes:
-					float2 TexCoord = (rasterTexCoord0 * w0 + rasterTexCoord1 * w1 + rasterTexCoord2 * w2 ) * pixelDepth;
-					float3 Normal = (rasterNormal0 * w0 + rasterNormal1 * w1 + rasterNormal2 * w2) * pixelDepth;
-
-					// Pixel color:
-					PixelRGBA32* cur = pixels;
-					cur += sy * width + sx;
-
-					PixelRGBA32 newPixel;
-					newPixel.R = uint8_t(1.0f * 255.0f);
-					newPixel.G = uint8_t(0.0f * 255.0f);
-					newPixel.B = uint8_t(1.0f * 255.0f);
-					newPixel.A = 0xff;
-
-					*cur = newPixel;
-				}
-			}
-		}
+		tri1[0] = Vertex(glm::vec3(-0.5f, 0.5f, 0.4f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec2(0.0f, 0.0f));	// Top-lef
+		tri1[1] = Vertex(glm::vec3(0.5f, -0.5f, 0.4f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec2(1.0f, 1.0f));	// Bot-right
+		tri1[2] = Vertex(glm::vec3(0.5f, 0.5f, 0.4f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec2(1.0f, 0.0f));	// Top-right
 	}
 }
+
+
 
 bool PollEvents()
 {
@@ -380,79 +240,29 @@ bool PollEvents()
 	return false;
 }
 
+static float curtime = 0.0f;
+glm::vec4 MyVertexShader(const Vertex& vertex)
+{
+	auto worldFromObject = glm::mat4();
+	worldFromObject = glm::rotate(worldFromObject, curtime, glm::vec3(0.0f, 1.0f, 0.0f));
+	auto viewFromWorld = glm::lookAtLH(glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	auto screenFromView = glm::perspectiveFovLH(glm::radians(75.0f), (float)gContext.Width, (float)gContext.Height, 0.5f, 50.0f);
+
+	return screenFromView * viewFromWorld * worldFromObject * vertex.Position;
+}
+
+glm::vec4 MyPixelShader(const Vertex& vertex)
+{
+	return glm::vec4(1.0f, 0.0f, 1.0f, 1.0f);
+}
+
 void RenderScene(PixelRGBA32* pixels, int width, int height)
 {
-	static Vertex kFrontTopLeft = Vertex(vec3(-1.0f, 1.0f, 1.0f));	static Vertex kFrontTopRight = Vertex(vec3(1.0f, 1.0f, 1.0f));
-	static Vertex kFrontBotLeft = Vertex(vec3(-1.0f, -1.0f, 1.0f)); static Vertex kFrontBotRight = Vertex(vec3(1.0f, -1.0f, 1.0f));
+	NRaster::Instance()->SetDepthBuffer(gContext.DepthBuffer);
+	NRaster::Instance()->SetRenderTarget(pixels);
+	NRaster::Instance()->SetViewport(0, 0, gContext.Width, gContext.Height);
+	NRaster::Instance()->SetShaders(MyVertexShader, MyPixelShader);
+	NRaster::Instance()->Draw(cubeModel.GetAllVertex(), cubeModel.GetNumVertices());
 
-	static Vertex kBackTopLeft = Vertex(vec3(-1.0f, 1.0f, -1.0f));	static Vertex kBackTopRight = Vertex(vec3(1.0f, 1.0f, -1.0f));
-	static Vertex kBackBotLeft = Vertex(vec3(-1.0f, -1.0f, -1.0f));	static Vertex kBackBotRight = Vertex(vec3(1.0f, -1.0f, -1.0f));
-
-	static Vertex kCube[36] = {
-		kFrontTopLeft,		
-		kFrontBotLeft,
-		kFrontBotRight,		// FRONT 
-		kFrontTopLeft,
-		kFrontBotRight,
-		kFrontTopRight,
-
-		kFrontTopRight,
-		kFrontBotRight,
-		kBackBotRight,		// RIGHT
-		kFrontTopRight,
-		kBackBotRight,
-		kBackTopRight,
-
-		kBackTopRight,
-		kBackBotRight,
-		kBackBotLeft,
-		kBackTopRight,		// BACK
-		kBackBotLeft,
-		kBackTopLeft,
-
-		kBackTopLeft,
-		kBackBotLeft,
-		kFrontBotLeft,		// LEFT
-		kBackTopLeft,
-		kFrontBotLeft,
-		kFrontTopLeft,
-
-		kBackTopRight,
-		kFrontTopLeft,
-		kFrontTopRight,		// TOP
-		kBackTopRight,
-		kBackTopLeft,
-		kFrontTopLeft,
-
-		kFrontBotRight,
-		kFrontBotLeft,
-		kBackBotLeft,
-		kFrontBotRight,		// BOT
-		kBackBotLeft,
-		kBackBotRight
-	};
-
-	static float time = 0.0f;
-	auto worldFromObject = glm::mat4();
-	worldFromObject = glm::rotate(worldFromObject, time, vec3(0.0f, 1.0f, 0.0f));
-	worldFromObject = glm::rotate(worldFromObject, -time, vec3(1.0f, 0.0f, 0.0f));
-	worldFromObject = glm::rotate(worldFromObject, -time, vec3(1.0f, 0.0f, 1.0f));
-	auto viewFromWorld = glm::lookAtLH(vec3(0.0f, 0.0f, -10.0f), vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 1.0f, 0.0f));
-	auto screenFromView = glm::perspectiveFovLH(glm::radians(75.0f), (float)gContext.Width, (float)gContext.Height, 0.5f, 50.0f);
-	time += 0.024f;
-
-	for (int i = 0; i < 36; i += 3)
-	{
-		Vertex tri[3] = { kCube[i + 0],kCube[i + 1],kCube[i + 2] };
-
-		tri[0].Position = screenFromView * viewFromWorld * worldFromObject * tri[0].Position;
-		tri[1].Position = screenFromView * viewFromWorld * worldFromObject * tri[1].Position;
-		tri[2].Position = screenFromView * viewFromWorld * worldFromObject * tri[2].Position;
-
-		tri[0].Position /= tri[0].Position.w;
-		tri[1].Position /= tri[1].Position.w;
-		tri[2].Position /= tri[2].Position.w;
-
-		RasterTriangle(pixels, tri, gContext.Width, gContext.Height);
-	}
+	curtime += 0.024f;
 }
