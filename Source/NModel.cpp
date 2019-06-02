@@ -23,7 +23,7 @@ bool NModel::LoadFromfile(const char* path)
 	std::vector<tinyobj::material_t> materials;
 	std::string error;
 
-	bool success = tinyobj::LoadObj(shapes, materials, error, path);
+	bool success = tinyobj::LoadObj(shapes, materials, error, path,nullptr,tinyobj::calculate_normals | tinyobj::triangulation);
 
 	if (!error.empty())
 	{
@@ -66,11 +66,20 @@ bool NModel::LoadFromfile(const char* path)
 			float vy = shapes[s].mesh.positions[3 * idx + 1];
 			float vz = shapes[s].mesh.positions[3 * idx + 2];
 
+
 			float nx = shapes[s].mesh.normals[3 * idx + 0];
 			float ny = shapes[s].mesh.normals[3 * idx + 1];
 			float nz = shapes[s].mesh.normals[3 * idx + 2];
 
-			m_vertices[curVtx] = Vertex(glm::vec3(vx, vy, vz),glm::vec3(nx,ny,nz));
+			float u = shapes[s].mesh.texcoords[2 * idx + 0];
+			float v = shapes[s].mesh.texcoords[2 * idx + 1];
+
+			Vertex loadedVertex;
+			loadedVertex.Position = glm::vec4(vx, vy, vz,1.0f);
+			loadedVertex.Normal = glm::vec3(nx, ny, nz);
+			loadedVertex.TexCoord = glm::vec2(u, v);
+			m_vertices[curVtx] = loadedVertex;
+
 			++curVtx;
 			index_offset += fv;
 		}

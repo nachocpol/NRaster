@@ -40,7 +40,7 @@ int main(int, char**)
 	InitSDL();
 	InitWindowAndRenderer();
 
-	cubeModel.LoadFromfile("../../Data/suzanne.obj");
+	cubeModel.LoadFromfile("../../Data/teapot.obj");
 
 	bool exit = false;
 	while (!exit)
@@ -74,9 +74,9 @@ int main(int, char**)
 					cur += y * gContext.Width + x;
 					
 					PixelRGBA32 clear;
-					clear.R = 0;
-					clear.G = 0;
-					clear.B = 0;
+					clear.R = 0x32;
+					clear.G = 0x32;
+					clear.B = 0x32;
 					clear.A = 0;
 					*cur = clear;
 				}
@@ -244,8 +244,12 @@ static float curtime = 0.0f;
 glm::vec4 MyVertexShader(const Vertex& vertex)
 {
 	auto worldFromObject = glm::mat4();
+	worldFromObject = glm::scale(worldFromObject, glm::vec3(0.01f, 0.01f, 0.01f));
 	worldFromObject = glm::rotate(worldFromObject, curtime, glm::vec3(0.0f, 1.0f, 0.0f));
-	auto viewFromWorld = glm::lookAtLH(glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+	//worldFromObject = glm::mat4();
+
+	auto viewFromWorld = glm::lookAtLH(glm::vec3(0.0f, 2.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	auto screenFromView = glm::perspectiveFovLH(glm::radians(75.0f), (float)gContext.Width, (float)gContext.Height, 0.5f, 50.0f);
 
 	return screenFromView * viewFromWorld * worldFromObject * vertex.Position;
@@ -253,7 +257,10 @@ glm::vec4 MyVertexShader(const Vertex& vertex)
 
 glm::vec4 MyPixelShader(const Vertex& vertex)
 {
-	return glm::vec4(1.0f, 0.0f, 1.0f, 1.0f);
+	float NdotL = glm::clamp(glm::dot(glm::normalize(vertex.Normal), glm::vec3(1.0f, 0.5f, 0.0f)),0.1f,1.0f);
+	const int M = 20;
+	float p = (fmod(vertex.TexCoord.x * M, 1.0) > 0.5) ^ (fmod(vertex.TexCoord.y * M, 1.0) < 0.5);
+	return glm::vec4(1.0f,1.0f,1.0f,1.0f) * p * NdotL;
 }
 
 void RenderScene(PixelRGBA32* pixels, int width, int height)
@@ -264,5 +271,5 @@ void RenderScene(PixelRGBA32* pixels, int width, int height)
 	NRaster::Instance()->SetShaders(MyVertexShader, MyPixelShader);
 	NRaster::Instance()->Draw(cubeModel.GetAllVertex(), cubeModel.GetNumVertices());
 
-	curtime += 0.024f;
+	curtime += 0.014f;
 }

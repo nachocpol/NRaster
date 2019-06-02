@@ -66,7 +66,7 @@ void NRaster::Draw(Vertex* data, uint32_t numVertices)
 	}
 }
 
-float NRaster::EdgeTest(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c)
+inline float NRaster::EdgeTest(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c)
 {
 	return ((c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x));
 }
@@ -151,7 +151,10 @@ void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 					float NdotL = glm::dot(glm::normalize(ToLight), glm::normalize(Normal));
 
 					// Pixel shader:
-					glm::vec4 pixel = renderState.PixelShader(Vertex());
+					Vertex interpolatedData;
+					interpolatedData.Normal = Normal;
+					interpolatedData.TexCoord = TexCoord;
+					glm::vec4 pixel = renderState.PixelShader(interpolatedData);
 
 					// Pixel color:
 					PixelRGBA32* cur = &pixels[sy * width + sx];
