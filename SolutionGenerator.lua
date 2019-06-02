@@ -34,7 +34,7 @@ project "NRaster"
 		"Dependencies/tinyobj/",
 		"Dependencies/tinythreads/source"
 	}
-
+	defines {"NOMINMAX"}
 	libdirs {"Dependencies/SDL2-2.0.9/lib/x64/"}
 	links   {"SDL2","SDL2main"}
    		

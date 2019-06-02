@@ -67,6 +67,8 @@ private:
 
 public:
 	static NRaster* Instance();
+	bool Initialize();
+
 	void SetViewport(int x, int y, int w, int h);
 	void SetRenderTarget(PixelRGBA32* data);
 	void SetDepthBuffer(float* data);

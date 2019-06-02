@@ -1,5 +1,7 @@
 #include "NRaster.h"
 #include "NModel.h"
+#include "tinythread.h"
+#include <iostream>
 
 NRaster::NRaster()
 {
@@ -22,6 +24,15 @@ NRaster* NRaster::Instance()
 		kInstance = new NRaster();
 	}
 	return kInstance;
+}
+
+bool NRaster::Initialize()
+{
+	uint32_t numCores = tthread::thread::hardware_concurrency();
+	std::cout << "[NRaster][Initialize][Info]: The number of detected CPU cores is: " << numCores << std::endl;
+
+
+	return false;
 }
 
 void NRaster::SetViewport(int x, int y, int w, int h)

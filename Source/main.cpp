@@ -42,6 +42,8 @@ int main(int, char**)
 
 	cubeModel.LoadFromfile("../../Data/teapot.obj");
 
+	NRaster::Instance()->Initialize();
+
 	bool exit = false;
 	while (!exit)
 	{
