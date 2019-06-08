@@ -1,5 +1,4 @@
 #include "NRaster.h"
-#include "NModel.h"
 #include "tinythread.h"
 #include <iostream>
 
@@ -31,6 +30,8 @@ bool NRaster::Initialize()
 	uint32_t numCores = tthread::thread::hardware_concurrency();
 	std::cout << "[NRaster][Initialize][Info]: The number of detected CPU cores is: " << numCores << std::endl;
 
+	m_numBinsHeight = numCores;
+	m_numBinsWidth = numCores * 2;
 
 	return false;
 }
@@ -58,22 +59,62 @@ void NRaster::SetShaders(VertexShaderFn vertexShader, PixelShaderFn pixelShader)
 
 void NRaster::Draw(Vertex* data, uint32_t numVertices)
 {
+	int width = m_renderState.ScreenRect.z;
+	int height = m_renderState.ScreenRect.w;
+
 	for (uint32_t i = 0; i < numVertices; i += 3)
 	{
-		Vertex triangle[3] = { data[i + 0], data[i + 2], data[i + 1] };
+		BinnedTriangle triangle;
+		triangle.Verts[0] = data[i + 0];
+		triangle.Verts[1] = data[i + 2];
+		triangle.Verts[2] = data[i + 1];
 
 		// Vertex shader:
-		triangle[0].Position = m_renderState.VertexShader(triangle[0]);
-		triangle[1].Position = m_renderState.VertexShader(triangle[1]);
-		triangle[2].Position = m_renderState.VertexShader(triangle[2]);
+		triangle.Verts[0].Position = m_renderState.VertexShader(triangle.Verts[0]);
+		triangle.Verts[1].Position = m_renderState.VertexShader(triangle.Verts[1]);
+		triangle.Verts[2].Position = m_renderState.VertexShader(triangle.Verts[2]);
 
 		// Normalize:
-		triangle[0].Position /= triangle[0].Position.w;
-		triangle[1].Position /= triangle[1].Position.w;
-		triangle[2].Position /= triangle[2].Position.w;
+		triangle.Verts[0].Position /= triangle.Verts[0].Position.w;
+		triangle.Verts[1].Position /= triangle.Verts[1].Position.w;
+		triangle.Verts[2].Position /= triangle.Verts[2].Position.w;
+
+		// Convert to screen position
+		triangle.Verts[0].Position = glm::vec4((triangle.Verts[0].Position.x * 0.5f + 0.5f) * width, (1.0f - (triangle.Verts[0].Position.y * 0.5f + 0.5f)) * height, triangle.Verts[0].Position.z, 1.0f);
+		triangle.Verts[1].Position = glm::vec4((triangle.Verts[1].Position.x * 0.5f + 0.5f) * width, (1.0f - (triangle.Verts[1].Position.y * 0.5f + 0.5f)) * height, triangle.Verts[1].Position.z, 1.0f);
+		triangle.Verts[2].Position = glm::vec4((triangle.Verts[2].Position.x * 0.5f + 0.5f) * width, (1.0f - (triangle.Verts[2].Position.y * 0.5f + 0.5f)) * height, triangle.Verts[2].Position.z, 1.0f);
+
+		// Min depth
+		triangle.MinDepth = glm::min(glm::min(triangle.Verts[0].Position.z, triangle.Verts[1].Position.z), triangle.Verts[2].Position.z);
+
+		// Add to bin:
+		int binWidth = width / m_numBinsWidth;
+		int binHeight = height / m_numBinsHeight;
+		glm::vec2 p0(triangle.Verts[0].Position.x, triangle.Verts[0].Position.y);
+		glm::vec2 p1(triangle.Verts[1].Position.x, triangle.Verts[1].Position.y);
+		glm::vec2 p2(triangle.Verts[2].Position.x, triangle.Verts[2].Position.y);
+		for (int by = 0; by < m_numBinsHeight; ++by)
+		{
+			for (int bx = 0; bx < m_numBinsWidth; ++bx)
+			{
+				glm::vec4 brect = glm::vec4(bx * binWidth, by * binHeight, binWidth, binHeight);
+				int cnt = PointInsideRect(p0, brect) ? 1 : 0;
+				cnt += PointInsideRect(p1, brect) ? 1 : 0;
+				cnt += PointInsideRect(p2, brect) ? 1 : 0;
+				if (cnt == 3)
+				{
+
+				}
+				else if (cnt > 0)
+				{
+
+				}
+			}
+		}
+
 
 		// Raster triangle:
-		NRaster::RasterTriangle(m_renderState, triangle);
+		NRaster::RasterTriangle(m_renderState, triangle.Verts);
 	}
 }
 
@@ -89,15 +130,10 @@ void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 	PixelRGBA32* pixels = renderState.RenderTarget;
 	float* depthBuffer = renderState.DepthBuffer;
 
-	// [CCW]
-	glm::vec3 v0 = vtx[0].Position;
-	glm::vec3 v1 = vtx[1].Position;
-	glm::vec3 v2 = vtx[2].Position;
-
-	// Convert into screen position (note that we flip the y)
-	glm::vec3 rasterv0((v0.x * 0.5f + 0.5f) * width, (1.0f - (v0.y * 0.5f + 0.5f)) * height, v0.z);
-	glm::vec3 rasterv1((v1.x * 0.5f + 0.5f) * width, (1.0f - (v1.y * 0.5f + 0.5f)) * height, v1.z);
-	glm::vec3 rasterv2((v2.x * 0.5f + 0.5f) * width, (1.0f - (v2.y * 0.5f + 0.5f)) * height, v2.z);
+	// [CCW] already in raster space
+	glm::vec3 rasterv0 = vtx[0].Position;
+	glm::vec3 rasterv1 = vtx[1].Position;
+	glm::vec3 rasterv2 = vtx[2].Position;
 
 	// We use 1 / V.z to calculate the current pixel depth
 	//	1 / P.z =  (1 / V0.z) * D0 + (1 / V1.z) * D1 + (1 / V2.z) * D2
@@ -134,7 +170,7 @@ void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 		{
 			glm::vec3 rasterPixel((float)sx + 0.5f, (float)sy + 0.5f, 0.0f); // +0.5->center pixel
 
-																			 // Areas of the parallelograms [rastervx, rastervy, rasterPixel]
+			// Areas of the parallelograms [rastervx, rastervy, rasterPixel]
 			float w0 = EdgeTest(rasterv1, rasterv2, rasterPixel);
 			float w1 = EdgeTest(rasterv2, rasterv0, rasterPixel);
 			float w2 = EdgeTest(rasterv0, rasterv1, rasterPixel);
@@ -179,6 +215,51 @@ void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 					*cur = newPixel;
 				}
 			}
+		}
+	}
+}
+
+bool NRaster::PointInsideRect(const glm::vec2& p, const glm::vec4& rect)
+{
+	if (p.x >= rect.x &&
+		p.x <= (rect.x + rect.z) &&
+		p.y >= rect.y &&
+		p.y <= (rect.y + rect.w))
+	{
+		return true;
+	}
+	return false;
+}
+
+void NRaster::RasterTraingleMT(void* renderContext)
+{
+	RasterContextMT* context = (RasterContextMT*)renderContext;
+	if (!context)
+	{
+		return;
+	}
+
+	PixelRGBA32* output = context->MTState.RenderTarget;
+
+	PixelRGBA32 col;
+	col.R = uint8_t(255.0f * context->DebugColour.x);
+	col.G = uint8_t(255.0f * context->DebugColour.y);
+	col.B = uint8_t(255.0f * context->DebugColour.z);
+	col.A = 0xff;
+
+	int x = context->Rect.x;
+	int y = context->Rect.y;
+	int w = context->Rect.z;
+	int h = context->Rect.w;
+
+	int rtWidth = context->MTState.ScreenRect.z;
+	int rtHeight = context->MTState.ScreenRect.w;
+
+	for (int sy = y; sy <= h; ++sy)
+	{
+		for (int sx = x; sx <= h; ++sx)
+		{
+			output[sy * rtWidth + sx] = col;
 		}
 	}
 }

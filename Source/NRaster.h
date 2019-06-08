@@ -6,8 +6,14 @@
 */
 
 #include "glm.hpp"
+#include "NModel.h"
+#include <vector>
 
-struct Vertex;
+namespace tthread
+{
+	class thread;
+};
+
 
 typedef glm::vec4(*VertexShaderFn)(const Vertex& vertex);
 typedef glm::vec4(*PixelShaderFn)(const Vertex& vertex);
@@ -58,6 +64,12 @@ struct RenderState
 	PixelShaderFn PixelShader;
 };
 
+struct BinnedTriangle
+{
+	Vertex Verts[3];
+	float MinDepth;
+};
+
 class NRaster
 {
 private:
@@ -79,7 +91,29 @@ private:
 
 	static float EdgeTest(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c);
 	static void RasterTriangle(const RenderState& renderState, Vertex* vtx);
+	static bool PointInsideRect(const glm::vec2& p, const glm::vec4& rect);
 
+	struct RasterContextMT
+	{
+		RasterContextMT(const RenderState& _state,const glm::ivec4& _rect, glm::vec3 _debugCol) :
+			  MTState(_state)
+			, Rect(_rect)
+			, DebugColour(_debugCol)
+		{};
+
+		const RenderState& MTState;
+		const glm::ivec4& Rect;
+		glm::vec3 DebugColour;
+	};
+	static void RasterTraingleMT(void* renderContext);
+
+	int m_numBinsWidth;
+	int m_numBinsHeight;
+
+	int m_binWidth;
+	int m_binHeight;
+
+	std::vector <tthread::thread*> m_rasterThreads;
 	RenderState m_renderState;
 	static NRaster* m_instance;
 };

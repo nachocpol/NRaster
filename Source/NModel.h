@@ -13,6 +13,13 @@ struct Vertex
 	Vertex()
 	{
 	}
+	Vertex(const Vertex& other)
+	{
+		Position = other.Position;
+		Normal = other.Normal;
+		Color = other.Color;
+		TexCoord = other.TexCoord;
+	}
 	Vertex(const glm::vec3& _position) :
 		Position(_position.x, _position.y, _position.z, 1.0f)
 	{
