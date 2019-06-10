@@ -8,6 +8,7 @@
 #include "glm.hpp"
 #include "NModel.h"
 #include <vector>
+#include <queue>
 
 struct SDL_Renderer; 
 
@@ -100,16 +101,16 @@ private:
 
 	struct RasterContextMT
 	{
-		RasterContextMT(const RenderState& _state,const glm::ivec4& _rect,const std::vector<BinnedTriangle>& _tris, glm::vec3 _debugCol) :
+		RasterContextMT(const RenderState& _state,const std::vector<BinnedTriangle>& _tris, glm::ivec4 _rect, glm::vec3 _debugCol) :
 			  MTState(_state)
-			, Rect(_rect)
 			, MTTriangles(_tris)
+			, Rect(_rect)
 			, DebugColour(_debugCol)
 		{};
 
 		const RenderState& MTState;
-		const glm::ivec4& Rect;
 		const std::vector<BinnedTriangle>& MTTriangles;
+		glm::ivec4 Rect;
 		glm::vec3 DebugColour;
 	};
 	static void RasterTraingleMT(void* renderContext);
@@ -122,7 +123,6 @@ private:
 
 	std::vector<BinnedTriangle>* m_bins;
 
-	std::vector <tthread::thread*> m_rasterThreads;
 	RenderState m_renderState;
 	static NRaster* m_instance;
 };

@@ -116,24 +116,41 @@ void NRaster::Draw(Vertex* data, uint32_t numVertices)
 				glm::vec4 brect = glm::vec4(bx * binWidth, by * binHeight, binWidth, binHeight);
 				if (QuadInsideQuad(brect, triBounds))
 				{
-					// m_bins[by * m_numBinsWidth + bx].push_back(triangle);
+					m_bins[by * m_numBinsWidth + bx].push_back(triangle);
 				}
 
 			}
 		}
 
 		// Raster triangle:
-		NRaster::RasterTriangle(m_renderState, triangle.Verts);
+		//NRaster::RasterTriangle(m_renderState, triangle.Verts);
 	}
 
 	// Debug jobs
+	std::vector<tthread::thread*> debugThreads;
+	std::vector<RasterContextMT*> threadContexts;
 	for (int by = 0; by < m_numBinsHeight; ++by)
 	{
 		for (int bx = 0; bx < m_numBinsWidth; ++bx)
 		{
-
+			if (m_bins[by * m_numBinsWidth + bx].empty() || (bx != 2 && by != 3))
+			{
+				continue;
+			}
+			glm::vec4 threadZone(bx * m_binWidth, by * m_binHeight, m_binWidth, m_binHeight);
+			threadContexts.push_back(new RasterContextMT(m_renderState, m_bins[by * m_numBinsWidth + bx], threadZone, glm::vec4(0, 0, 1, 1)));
+			debugThreads.emplace_back(new tthread::thread(NRaster::RasterTraingleMT, (void*)threadContexts[threadContexts.size() - 1]));
 		}
 	}
+	// Wait for all to be done and release memory
+	for (uint32_t tidx = 0; tidx != debugThreads.size(); ++tidx)
+	{
+		debugThreads[tidx]->join();
+		delete debugThreads[tidx];
+		delete threadContexts[tidx];
+	}
+	debugThreads.clear();
+	threadContexts.clear();
 }
 
 void NRaster::DebugDraw(SDL_Renderer* renderer)
@@ -293,6 +310,11 @@ void NRaster::RasterTraingleMT(void* renderContext)
 		return;
 	}
 
+	for (uint32_t i = 0; i != context->MTTriangles.size(); ++i)
+	{
+		NRaster::RasterTriangle(context->MTState,(Vertex*)context->MTTriangles[i].Verts);
+	}
+	/*
 	PixelRGBA32* output = context->MTState.RenderTarget;
 
 	PixelRGBA32 col;
@@ -316,4 +338,5 @@ void NRaster::RasterTraingleMT(void* renderContext)
 			output[sy * rtWidth + sx] = col;
 		}
 	}
+	*/
 }
