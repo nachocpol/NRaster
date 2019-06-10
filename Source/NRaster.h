@@ -9,11 +9,12 @@
 #include "NModel.h"
 #include <vector>
 
+struct SDL_Renderer; 
+
 namespace tthread
 {
 	class thread;
 };
-
 
 typedef glm::vec4(*VertexShaderFn)(const Vertex& vertex);
 typedef glm::vec4(*PixelShaderFn)(const Vertex& vertex);
@@ -87,22 +88,28 @@ public:
 	void SetShaders(VertexShaderFn vertexShader, PixelShaderFn pixelShader);
 	void Draw(Vertex* data, uint32_t numVertices);
 
+	void DebugDraw(SDL_Renderer* renderer);
+
 private:
 
 	static float EdgeTest(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c);
 	static void RasterTriangle(const RenderState& renderState, Vertex* vtx);
 	static bool PointInsideRect(const glm::vec2& p, const glm::vec4& rect);
+	static bool QuadInsideQuad(const glm::vec4& a, const glm::vec4& b);
+	static glm::vec4 GetBounds(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c);
 
 	struct RasterContextMT
 	{
-		RasterContextMT(const RenderState& _state,const glm::ivec4& _rect, glm::vec3 _debugCol) :
+		RasterContextMT(const RenderState& _state,const glm::ivec4& _rect,const std::vector<BinnedTriangle>& _tris, glm::vec3 _debugCol) :
 			  MTState(_state)
 			, Rect(_rect)
+			, MTTriangles(_tris)
 			, DebugColour(_debugCol)
 		{};
 
 		const RenderState& MTState;
 		const glm::ivec4& Rect;
+		const std::vector<BinnedTriangle>& MTTriangles;
 		glm::vec3 DebugColour;
 	};
 	static void RasterTraingleMT(void* renderContext);
@@ -112,6 +119,8 @@ private:
 
 	int m_binWidth;
 	int m_binHeight;
+
+	std::vector<BinnedTriangle>* m_bins;
 
 	std::vector <tthread::thread*> m_rasterThreads;
 	RenderState m_renderState;

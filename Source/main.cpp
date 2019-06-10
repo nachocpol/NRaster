@@ -122,6 +122,8 @@ int main(int, char**)
 			SDL_RenderCopy(gContext.Renderer, gContext.DepthBufferDebug, NULL, &target);
 		}
 
+		NRaster::Instance()->DebugDraw(gContext.Renderer);
+
 		// Present.
 		SDL_RenderPresent(gContext.Renderer);
 	}

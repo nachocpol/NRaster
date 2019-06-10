@@ -1,5 +1,6 @@
 #include "NRaster.h"
 #include "tinythread.h"
+#include "SDL.h" // for debug rendering
 #include <iostream>
 
 NRaster::NRaster()
@@ -33,12 +34,17 @@ bool NRaster::Initialize()
 	m_numBinsHeight = numCores;
 	m_numBinsWidth = numCores * 2;
 
+	m_bins = new std::vector<BinnedTriangle>[m_numBinsWidth * m_numBinsHeight];
+
 	return false;
 }
 
 void NRaster::SetViewport(int x, int y, int w, int h)
 {
 	m_renderState.ScreenRect = glm::vec4(x, y, w, h);
+
+	m_binWidth = w / m_numBinsWidth;
+	m_binHeight = h / m_numBinsHeight;
 }
 
 void NRaster::SetRenderTarget(PixelRGBA32* data)
@@ -59,6 +65,15 @@ void NRaster::SetShaders(VertexShaderFn vertexShader, PixelShaderFn pixelShader)
 
 void NRaster::Draw(Vertex* data, uint32_t numVertices)
 {
+	// Before starting a new drawcall, clear the bins. This #ISN´T thread safe
+	for (int by = 0; by < m_numBinsHeight; ++by)
+	{
+		for (int bx = 0; bx < m_numBinsWidth; ++bx)
+		{
+			m_bins[by * m_numBinsWidth + bx].clear();
+		}
+	}
+
 	int width = m_renderState.ScreenRect.z;
 	int height = m_renderState.ScreenRect.w;
 
@@ -90,31 +105,49 @@ void NRaster::Draw(Vertex* data, uint32_t numVertices)
 		// Add to bin:
 		int binWidth = width / m_numBinsWidth;
 		int binHeight = height / m_numBinsHeight;
-		glm::vec2 p0(triangle.Verts[0].Position.x, triangle.Verts[0].Position.y);
-		glm::vec2 p1(triangle.Verts[1].Position.x, triangle.Verts[1].Position.y);
-		glm::vec2 p2(triangle.Verts[2].Position.x, triangle.Verts[2].Position.y);
+		glm::vec3 p0(triangle.Verts[0].Position.x, triangle.Verts[0].Position.y,0.0f);
+		glm::vec3 p1(triangle.Verts[1].Position.x, triangle.Verts[1].Position.y,0.0f);
+		glm::vec3 p2(triangle.Verts[2].Position.x, triangle.Verts[2].Position.y,0.0f);
+		glm::vec4 triBounds = GetBounds(p0, p1, p2);
 		for (int by = 0; by < m_numBinsHeight; ++by)
 		{
 			for (int bx = 0; bx < m_numBinsWidth; ++bx)
 			{
 				glm::vec4 brect = glm::vec4(bx * binWidth, by * binHeight, binWidth, binHeight);
-				int cnt = PointInsideRect(p0, brect) ? 1 : 0;
-				cnt += PointInsideRect(p1, brect) ? 1 : 0;
-				cnt += PointInsideRect(p2, brect) ? 1 : 0;
-				if (cnt == 3)
+				if (QuadInsideQuad(brect, triBounds))
 				{
-
+					// m_bins[by * m_numBinsWidth + bx].push_back(triangle);
 				}
-				else if (cnt > 0)
-				{
 
-				}
 			}
 		}
 
-
 		// Raster triangle:
 		NRaster::RasterTriangle(m_renderState, triangle.Verts);
+	}
+
+	// Debug jobs
+	for (int by = 0; by < m_numBinsHeight; ++by)
+	{
+		for (int bx = 0; bx < m_numBinsWidth; ++bx)
+		{
+
+		}
+	}
+}
+
+void NRaster::DebugDraw(SDL_Renderer* renderer)
+{
+	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xff);
+	for (int bx = 0; bx < m_numBinsWidth; ++bx)
+	{
+		int x = (bx * m_binWidth);
+		SDL_RenderDrawLine(renderer,x,0,x,m_renderState.ScreenRect.w);
+	}
+	for (int by = 0; by < m_numBinsHeight; ++by)
+	{
+		int y = (by * m_binHeight);
+		SDL_RenderDrawLine(renderer, 0, y, m_renderState.ScreenRect.z, y);
 	}
 }
 
@@ -156,17 +189,14 @@ void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 	glm::vec3 rasterNormal2 = vtx[2].Normal * rasterv2.z;
 
 	// Triangle bounding quad:
-	int minX = (int)glm::min(glm::min(rasterv0.x, rasterv1.x), rasterv2.x);
-	int minY = (int)glm::min(glm::min(rasterv0.y, rasterv1.y), rasterv2.y);
-	int maxX = (int)glm::max(glm::max(rasterv0.x, rasterv1.x), rasterv2.x);
-	int maxY = (int)glm::max(glm::max(rasterv0.y, rasterv1.y), rasterv2.y);
+	glm::vec4 bounds = GetBounds(rasterv0, rasterv1, rasterv2);
 
 	// Pre calc 1 over area of the tri:
 	float areaRcp = 1.0f / EdgeTest(rasterv0, rasterv1, rasterv2);
 
-	for (int sy = minY; sy <= maxY; ++sy)
+	for (int sy = bounds.y; sy <= bounds.w; ++sy)
 	{
-		for (int sx = minX; sx <= maxX; ++sx)
+		for (int sx = bounds.x; sx <= bounds.z; ++sx)
 		{
 			glm::vec3 rasterPixel((float)sx + 0.5f, (float)sy + 0.5f, 0.0f); // +0.5->center pixel
 
@@ -231,6 +261,30 @@ bool NRaster::PointInsideRect(const glm::vec2& p, const glm::vec4& rect)
 	return false;
 }
 
+bool NRaster::QuadInsideQuad(const glm::vec4& a, const glm::vec4& b)
+{
+	//	x  y    z       w
+	// [x, y, width, height]
+	if (a.x + a.z >= b.x &&
+		a.x <= b.x + b.z &&
+		a.y + a.w >= b.y && 
+		a.y <= b.y + b.w)
+	{
+		return true;
+	}
+	return false;
+}
+
+glm::vec4 NRaster::GetBounds(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c)
+{
+	glm::vec4 bounds;
+	bounds.x = (int)glm::min(glm::min(a.x, b.x), c.x);
+	bounds.y = (int)glm::min(glm::min(a.y, b.y), c.y);
+	bounds.z = (int)glm::max(glm::max(a.x, b.x), c.x);
+	bounds.w = (int)glm::max(glm::max(a.y, b.y), c.y);
+	return bounds;
+}
+
 void NRaster::RasterTraingleMT(void* renderContext)
 {
 	RasterContextMT* context = (RasterContextMT*)renderContext;
@@ -255,9 +309,9 @@ void NRaster::RasterTraingleMT(void* renderContext)
 	int rtWidth = context->MTState.ScreenRect.z;
 	int rtHeight = context->MTState.ScreenRect.w;
 
-	for (int sy = y; sy <= h; ++sy)
+	for (int sy = y; sy <= (y+h); ++sy)
 	{
-		for (int sx = x; sx <= h; ++sx)
+		for (int sx = x; sx <= (x+w); ++sx)
 		{
 			output[sy * rtWidth + sx] = col;
 		}
