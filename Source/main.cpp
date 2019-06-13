@@ -248,13 +248,13 @@ static float curtime = 0.0f;
 glm::vec4 MyVertexShader(const Vertex& vertex)
 {
 	auto worldFromObject = glm::mat4();
-	worldFromObject = glm::scale(worldFromObject, glm::vec3(0.01f, 0.01f, 0.01f));
+	worldFromObject = glm::scale(worldFromObject, glm::vec3(0.02f, 0.02f, 0.02f));
 	worldFromObject = glm::rotate(worldFromObject, curtime, glm::vec3(0.0f, 1.0f, 0.0f));
 
 	//worldFromObject = glm::mat4();
 
-	auto viewFromWorld = glm::lookAtLH(glm::vec3(0.0f, 2.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	auto screenFromView = glm::perspectiveFovLH(glm::radians(75.0f), (float)gContext.Width, (float)gContext.Height, 0.5f, 50.0f);
+	auto viewFromWorld = glm::lookAtLH(glm::vec3(0.0f, 2.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	auto screenFromView = glm::perspectiveFovLH(glm::radians(75.0f), (float)gContext.Width, (float)gContext.Height, 0.05f, 10.0f);
 
 	return screenFromView * viewFromWorld * worldFromObject * vertex.Position;
 }

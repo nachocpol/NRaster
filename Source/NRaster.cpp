@@ -3,6 +3,8 @@
 #include "SDL.h" // for debug rendering
 #include <iostream>
 
+#define MULTICORE
+
 NRaster::NRaster()
 {
 }
@@ -32,7 +34,7 @@ bool NRaster::Initialize()
 	std::cout << "[NRaster][Initialize][Info]: The number of detected CPU cores is: " << numCores << std::endl;
 
 	m_numBinsHeight = numCores;
-	m_numBinsWidth = numCores * 2;
+	m_numBinsWidth = numCores;
 
 	m_bins = new std::vector<BinnedTriangle>[m_numBinsWidth * m_numBinsHeight];
 
@@ -103,6 +105,7 @@ void NRaster::Draw(Vertex* data, uint32_t numVertices)
 		triangle.MinDepth = glm::min(glm::min(triangle.Verts[0].Position.z, triangle.Verts[1].Position.z), triangle.Verts[2].Position.z);
 
 		// Add to bin:
+#if defined(MULTICORE)
 		int binWidth = width / m_numBinsWidth;
 		int binHeight = height / m_numBinsHeight;
 		glm::vec3 p0(triangle.Verts[0].Position.x, triangle.Verts[0].Position.y,0.0f);
@@ -113,33 +116,41 @@ void NRaster::Draw(Vertex* data, uint32_t numVertices)
 		{
 			for (int bx = 0; bx < m_numBinsWidth; ++bx)
 			{
-				glm::vec4 brect = glm::vec4(bx * binWidth, by * binHeight, binWidth, binHeight);
-				if (QuadInsideQuad(brect, triBounds))
+				float x = bx * binWidth;
+				float y = by * binHeight;
+				glm::vec4 bquad = glm::vec4(x, y, x + binWidth, y + binHeight);
+				if (RectInsideRect(bquad, triBounds))
 				{
 					m_bins[by * m_numBinsWidth + bx].push_back(triangle);
 				}
 
 			}
 		}
-
+#else
 		// Raster triangle:
-		//NRaster::RasterTriangle(m_renderState, triangle.Verts);
+		m_renderState.RtSize = m_renderState.ScreenRect; // the size of the rt should be inside the texture
+		NRaster::RasterTriangle(m_renderState, triangle.Verts);
+#endif
 	}
 
 	// Debug jobs
+#if defined(MULTICORE)
 	std::vector<tthread::thread*> debugThreads;
 	std::vector<RasterContextMT*> threadContexts;
 	for (int by = 0; by < m_numBinsHeight; ++by)
 	{
 		for (int bx = 0; bx < m_numBinsWidth; ++bx)
 		{
-			if (m_bins[by * m_numBinsWidth + bx].empty() || (bx != 2 && by != 3))
+			if (m_bins[by * m_numBinsWidth + bx].empty())
 			{
 				continue;
 			}
-			glm::vec4 threadZone(bx * m_binWidth, by * m_binHeight, m_binWidth, m_binHeight);
-			threadContexts.push_back(new RasterContextMT(m_renderState, m_bins[by * m_numBinsWidth + bx], threadZone, glm::vec4(0, 0, 1, 1)));
-			debugThreads.emplace_back(new tthread::thread(NRaster::RasterTraingleMT, (void*)threadContexts[threadContexts.size() - 1]));
+			// if ((by == 2) && (bx == 3))
+			{
+				glm::vec4 threadZone(bx * m_binWidth, by * m_binHeight, m_binWidth, m_binHeight);
+				threadContexts.push_back(new RasterContextMT(m_renderState, m_bins[by * m_numBinsWidth + bx], threadZone, glm::vec4(0, 0, 1, 1)));
+				debugThreads.emplace_back(new tthread::thread(NRaster::RasterTraingleMT, (void*)threadContexts[threadContexts.size() - 1]));
+			}
 		}
 	}
 	// Wait for all to be done and release memory
@@ -151,6 +162,7 @@ void NRaster::Draw(Vertex* data, uint32_t numVertices)
 	}
 	debugThreads.clear();
 	threadContexts.clear();
+#endif
 }
 
 void NRaster::DebugDraw(SDL_Renderer* renderer)
@@ -175,8 +187,8 @@ inline float NRaster::EdgeTest(const glm::vec3& a, const glm::vec3& b, const glm
 
 void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 {
-	int width = renderState.ScreenRect.z;
-	int height = renderState.ScreenRect.w;
+	int width = renderState.RtSize.z;
+	int height = renderState.RtSize.w;
 	PixelRGBA32* pixels = renderState.RenderTarget;
 	float* depthBuffer = renderState.DepthBuffer;
 
@@ -210,11 +222,21 @@ void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 
 	// Pre calc 1 over area of the tri:
 	float areaRcp = 1.0f / EdgeTest(rasterv0, rasterv1, rasterv2);
+	// Skip back facing triangles:
+	if (areaRcp <= 0.0f)
+	{
+		return;
+	}
 
 	for (int sy = bounds.y; sy <= bounds.w; ++sy)
 	{
 		for (int sx = bounds.x; sx <= bounds.z; ++sx)
 		{
+			// Clip if its outside the bounds
+			if (!PointInsideRect(glm::vec2(sx, sy), renderState.ScreenRect))
+			{
+				continue;
+			}
 			glm::vec3 rasterPixel((float)sx + 0.5f, (float)sy + 0.5f, 0.0f); // +0.5->center pixel
 
 			// Areas of the parallelograms [rastervx, rastervy, rasterPixel]
@@ -240,9 +262,6 @@ void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 					// Perspective correct attributes:
 					glm::vec2 TexCoord = (rasterTexCoord0 * w0 + rasterTexCoord1 * w1 + rasterTexCoord2 * w2) * pixelDepth;
 					glm::vec3 Normal = (rasterNormal0 * w0 + rasterNormal1 * w1 + rasterNormal2 * w2) * pixelDepth;
-
-					glm::vec3 ToLight = -glm::vec3(1.0, 0.5, 0.0f);
-					float NdotL = glm::dot(glm::normalize(ToLight), glm::normalize(Normal));
 
 					// Pixel shader:
 					Vertex interpolatedData;
@@ -278,14 +297,16 @@ bool NRaster::PointInsideRect(const glm::vec2& p, const glm::vec4& rect)
 	return false;
 }
 
-bool NRaster::QuadInsideQuad(const glm::vec4& a, const glm::vec4& b)
+bool NRaster::RectInsideRect(const glm::vec4& a, const glm::vec4& b)
 {
+	glm::vec4 ra = glm::vec4(a.x, a.y, a.z - a.x, a.w - a.y);
+	glm::vec4 rb = glm::vec4(b.x, b.y, b.z - b.x, b.w - b.y);
 	//	x  y    z       w
 	// [x, y, width, height]
-	if (a.x + a.z >= b.x &&
-		a.x <= b.x + b.z &&
-		a.y + a.w >= b.y && 
-		a.y <= b.y + b.w)
+	if (ra.x + ra.z >= rb.x &&
+		ra.x <= rb.x + rb.z &&
+		ra.y + ra.w >= rb.y && 
+		ra.y <= rb.y + rb.w)
 	{
 		return true;
 	}
@@ -309,34 +330,16 @@ void NRaster::RasterTraingleMT(void* renderContext)
 	{
 		return;
 	}
+	context->MTState.RtSize = context->MTState.ScreenRect;
+	context->MTState.ScreenRect = context->Rect;
+
+	// Sort triangles... sadly makes it slower :(
+	//std::sort(context->MTTriangles.begin(), context->MTTriangles.end(), [](BinnedTriangle& a, BinnedTriangle& b) {
+	//	return a.MinDepth > b.MinDepth;
+	//});
 
 	for (uint32_t i = 0; i != context->MTTriangles.size(); ++i)
 	{
-		NRaster::RasterTriangle(context->MTState,(Vertex*)context->MTTriangles[i].Verts);
+		NRaster::RasterTriangle(context->MTState, (Vertex*)context->MTTriangles[i].Verts);
 	}
-	/*
-	PixelRGBA32* output = context->MTState.RenderTarget;
-
-	PixelRGBA32 col;
-	col.R = uint8_t(255.0f * context->DebugColour.x);
-	col.G = uint8_t(255.0f * context->DebugColour.y);
-	col.B = uint8_t(255.0f * context->DebugColour.z);
-	col.A = 0xff;
-
-	int x = context->Rect.x;
-	int y = context->Rect.y;
-	int w = context->Rect.z;
-	int h = context->Rect.w;
-
-	int rtWidth = context->MTState.ScreenRect.z;
-	int rtHeight = context->MTState.ScreenRect.w;
-
-	for (int sy = y; sy <= (y+h); ++sy)
-	{
-		for (int sx = x; sx <= (x+w); ++sx)
-		{
-			output[sy * rtWidth + sx] = col;
-		}
-	}
-	*/
 }

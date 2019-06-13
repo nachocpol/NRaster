@@ -61,6 +61,7 @@ struct RenderState
 	float* DepthBuffer;
 	DepthTest::T DTest;
 	WindingOrder::T WOrder;
+	glm::vec4 RtSize;
 	glm::ivec4 ScreenRect;	// x,y,w,h
 	VertexShaderFn VertexShader;
 	PixelShaderFn PixelShader;
@@ -96,20 +97,20 @@ private:
 	static float EdgeTest(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c);
 	static void RasterTriangle(const RenderState& renderState, Vertex* vtx);
 	static bool PointInsideRect(const glm::vec2& p, const glm::vec4& rect);
-	static bool QuadInsideQuad(const glm::vec4& a, const glm::vec4& b);
+	static bool RectInsideRect(const glm::vec4& a, const glm::vec4& b);
 	static glm::vec4 GetBounds(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c);
 
 	struct RasterContextMT
 	{
-		RasterContextMT(const RenderState& _state,const std::vector<BinnedTriangle>& _tris, glm::ivec4 _rect, glm::vec3 _debugCol) :
+		RasterContextMT(const RenderState& _state,std::vector<BinnedTriangle>& _tris, glm::ivec4 _rect, glm::vec3 _debugCol) :
 			  MTState(_state)
 			, MTTriangles(_tris)
 			, Rect(_rect)
 			, DebugColour(_debugCol)
 		{};
 
-		const RenderState& MTState;
-		const std::vector<BinnedTriangle>& MTTriangles;
+		std::vector<BinnedTriangle>& MTTriangles;
+		RenderState MTState;
 		glm::ivec4 Rect;
 		glm::vec3 DebugColour;
 	};
