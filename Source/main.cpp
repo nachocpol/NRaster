@@ -1,10 +1,10 @@
-#include <chrono>
 #include <smmintrin.h>
 #include <iostream>
 #include <SDL.h>
 
 #include "NModel.h"
 #include "NRaster.h"
+#include "NProfiler.h"
 
 #include "glm.hpp"
 #include "matrix.hpp"
@@ -33,14 +33,16 @@ bool PollEvents();
 
 void RenderScene(PixelRGBA32* pixels, int width, int height);
 
-NModel cubeModel;
+NModel teapot;
+NModel cube;
 
 int main(int, char**)
 {
 	InitSDL();
 	InitWindowAndRenderer();
 
-	cubeModel.LoadFromfile("../../Data/teapot.obj");
+	teapot.LoadFromfile("../../Data/teapot.obj");
+	cube.LoadFromfile("../../Data/cube.obj");
 
 	NRaster::Instance()->Initialize();
 
@@ -84,14 +86,13 @@ int main(int, char**)
 				}
 			}
 
-			auto start = std::chrono::system_clock::now();
+			auto start = NProfilerGet()->Now();
 			
 			RenderScene((PixelRGBA32*)pData, gContext.Width, gContext.Height);
 
-			auto end = std::chrono::system_clock::now();
-			std::chrono::duration<double> diff = end - start;
-			std::cout << diff.count() * 1000.0 << "ms.\n";
-		}
+			auto end = NProfilerGet()->Now();
+			std::cout << NProfilerGet()->TimeDiffMS(start,end) << "ms.\n";
+		}	
 		SDL_UnlockTexture(gContext.Framebuffer);
 		SDL_RenderCopy(gContext.Renderer, gContext.Framebuffer, NULL, NULL);
 
@@ -249,36 +250,39 @@ bool PollEvents()
 }
 
 static float curtime = 0.0f;
-glm::vec4 MyVertexShader(const Vertex& vertex)
+glm::vec4 MyVertexShader(const Vertex& vertex, const VertexRenderData& renderData)
 {
-	auto worldFromObject = glm::mat4();
-	worldFromObject = glm::translate(worldFromObject,glm::vec3(0.0f, -0.5f, 0.0f));
-	worldFromObject = glm::scale(worldFromObject, glm::vec3(0.02f, 0.02f, 0.02f));
-	worldFromObject = glm::rotate(worldFromObject, curtime, glm::vec3(0.0f, 1.0f, 0.0f));
-
-	//worldFromObject = glm::mat4();
-
-	auto viewFromWorld = glm::lookAtLH(glm::vec3(0.0f, 2.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	auto screenFromView = glm::perspectiveFovLH(glm::radians(75.0f), (float)gContext.Width, (float)gContext.Height, 0.05f, 10.0f);
-
-	return screenFromView * viewFromWorld * worldFromObject * vertex.Position;
+	return renderData.Projection * renderData.View * renderData.Transform * vertex.Position;
 }
 
 glm::vec4 MyPixelShader(const Vertex& vertex)
 {
 	float NdotL = glm::clamp(glm::dot(glm::normalize(vertex.Normal), glm::vec3(1.0f, 0.5f, 0.0f)),0.1f,1.0f);
-	const int M = 20;
-	float p = (fmod(vertex.TexCoord.x * M, 1.0) > 0.5) ^ (fmod(vertex.TexCoord.y * M, 1.0) < 0.5);
-	return glm::vec4(1.0f,1.0f,1.0f,1.0f) * p * NdotL;
+	return glm::vec4(0.5f, 0.5f, 0.8f, 1.0f) * NdotL;
 }
 
 void RenderScene(PixelRGBA32* pixels, int width, int height)
 {
+	auto viewMtx = glm::lookAtLH(glm::vec3(0.0f, 2.0f, 4.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	auto projMtx = glm::perspectiveFovLH(glm::radians(75.0f), (float)gContext.Width, (float)gContext.Height, 0.05f, 10.0f);
+
 	NRaster::Instance()->SetDepthBuffer(gContext.DepthBuffer);
 	NRaster::Instance()->SetRenderTarget(pixels);
 	NRaster::Instance()->SetViewport(0, 0, gContext.Width, gContext.Height);
 	NRaster::Instance()->SetShaders(MyVertexShader, MyPixelShader);
-	NRaster::Instance()->Draw(cubeModel.GetAllVertex(), cubeModel.GetNumVertices());
+	// Teapot
+	auto modelMtx = glm::mat4();
+	modelMtx = glm::translate(modelMtx, glm::vec3(0.0f, -0.5f, 0.0f));
+	modelMtx = glm::scale(modelMtx, glm::vec3(0.02f, 0.02f, 0.02f));
+	modelMtx = glm::rotate(modelMtx, curtime, glm::vec3(0.0f, 1.0f, 0.0f));
+	NRaster::Instance()->SetTransforms(modelMtx, viewMtx, projMtx);
+	NRaster::Instance()->Draw(teapot.GetAllVertex(), teapot.GetNumVertices());
+	// Cube
+	modelMtx = glm::mat4();
+	modelMtx = glm::translate(modelMtx, glm::vec3(0.0f, -1.0f, 0.0f));
+	modelMtx = glm::scale(modelMtx, glm::vec3(4.0f, 0.2f, 4.0f));
+	NRaster::Instance()->SetTransforms(modelMtx, viewMtx, projMtx);
+	NRaster::Instance()->Draw(cube.GetAllVertex(), cube.GetNumVertices());
 
-	//curtime += 0.014f;
+	curtime += 0.014f;
 }

@@ -1,9 +1,10 @@
 #include "NRaster.h"
+#include "NProfiler.h"
 #include "tinythread.h"
 #include "SDL.h" // for debug rendering
 #include <iostream>
 
-#define MULTICORE
+// #define MULTICORE
 
 NRaster::NRaster()
 {
@@ -79,6 +80,12 @@ void NRaster::Draw(Vertex* data, uint32_t numVertices)
 	int width = m_renderState.ScreenRect.z;
 	int height = m_renderState.ScreenRect.w;
 
+	VertexRenderData vtxRenderData;
+	vtxRenderData.Projection = m_curProjection;
+	vtxRenderData.View = m_curView;
+	vtxRenderData.Transform = m_curTransform;
+
+	uint64_t acumCycles = 0;
 	for (uint32_t i = 0; i < numVertices; i += 3)
 	{
 		BinnedTriangle triangle;
@@ -87,9 +94,9 @@ void NRaster::Draw(Vertex* data, uint32_t numVertices)
 		triangle.Verts[2] = data[i + 1];
 
 		// Vertex shader:
-		triangle.Verts[0].Position = m_renderState.VertexShader(triangle.Verts[0]);
-		triangle.Verts[1].Position = m_renderState.VertexShader(triangle.Verts[1]);
-		triangle.Verts[2].Position = m_renderState.VertexShader(triangle.Verts[2]);
+		triangle.Verts[0].Position = m_renderState.VertexShader(triangle.Verts[0], vtxRenderData);
+		triangle.Verts[1].Position = m_renderState.VertexShader(triangle.Verts[1], vtxRenderData);
+		triangle.Verts[2].Position = m_renderState.VertexShader(triangle.Verts[2], vtxRenderData);
 
 		// Normalize:
 		triangle.Verts[0].Position /= triangle.Verts[0].Position.w;
@@ -127,13 +134,21 @@ void NRaster::Draw(Vertex* data, uint32_t numVertices)
 			}
 		}
 #else
+		auto tstart = NProfilerGet()->Now();
+
 		// Raster triangle:
 		m_renderState.RtSize = m_renderState.ScreenRect; // the size of the rt should be inside the texture
 		NRaster::RasterTriangle(m_renderState, triangle.Verts);
+
+		auto tend = NProfilerGet()->Now();
+		acumCycles += NProfilerGet()->TimeMSToCycles(NProfilerGet()->TimeDiffMS(tstart, tend));
 #endif
 	}
+	
+	//uint64_t avgCycles = acumCycles / numVertices;
+	//std::cout << "[NRaster::Draw] " << avgCycles << std::endl;
 
-	// Debug jobs
+	// Schedule jobs
 #if defined(MULTICORE)
 	std::vector<tthread::thread*> debugThreads;
 	std::vector<RasterContextMT*> threadContexts;
@@ -163,6 +178,13 @@ void NRaster::Draw(Vertex* data, uint32_t numVertices)
 	debugThreads.clear();
 	threadContexts.clear();
 #endif
+}
+
+void NRaster::SetTransforms(glm::mat4 transform, glm::mat4 view, glm::mat4 projection)
+{
+	m_curTransform = transform;
+	m_curView = view;
+	m_curProjection = projection;
 }
 
 void NRaster::DebugDraw(SDL_Renderer* renderer)
@@ -197,6 +219,14 @@ void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 	glm::vec3 rasterv1 = vtx[1].Position;
 	glm::vec3 rasterv2 = vtx[2].Position;
 
+	// Pre calc 1 over area of the tri:
+	float areaRcp = 1.0f / EdgeTest(rasterv0, rasterv1, rasterv2);
+	// Skip back facing triangles:
+	if (areaRcp <= 0.0f)
+	{
+		return;
+	}
+
 	// We use 1 / V.z to calculate the current pixel depth
 	//	1 / P.z =  (1 / V0.z) * D0 + (1 / V1.z) * D1 + (1 / V2.z) * D2
 	rasterv0.z = 1.0f / rasterv0.z;
@@ -220,16 +250,13 @@ void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 	// Triangle bounding quad:
 	glm::vec4 bounds = GetBounds(rasterv0, rasterv1, rasterv2);
 
-	// Pre calc 1 over area of the tri:
-	float areaRcp = 1.0f / EdgeTest(rasterv0, rasterv1, rasterv2);
-	// Skip back facing triangles:
-	if (areaRcp <= 0.0f)
-	{
-		return;
-	}
-
 	for (int sy = bounds.y; sy <= bounds.w; ++sy)
 	{
+		
+		uint32_t rowOffset = sy * width;
+		PixelRGBA32* curPixelRow = &pixels[rowOffset];
+		float* curDepthRow = &depthBuffer[rowOffset];
+
 		for (int sx = bounds.x; sx <= bounds.z; ++sx)
 		{
 			// Clip if its outside the bounds
@@ -237,14 +264,14 @@ void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 			{
 				continue;
 			}
-			glm::vec3 rasterPixel((float)sx + 0.5f, (float)sy + 0.5f, 0.0f); // +0.5->center pixel
+			glm::ivec3 rasterPixel(sx,sy,0); // +0.5->center pixel
 
 			// Areas of the parallelograms [rastervx, rastervy, rasterPixel]
 			float w0 = EdgeTest(rasterv1, rasterv2, rasterPixel);
 			float w1 = EdgeTest(rasterv2, rasterv0, rasterPixel);
 			float w2 = EdgeTest(rasterv0, rasterv1, rasterPixel);
 
-			if ((w0 >= 0.0f) && (w1 >= 0.0f) && (w2 >= 0.0f))
+			if ((w0 > 0.0f) && (w1 > 0.0f) && (w2 > 0.0f))
 			{
 				// Barycentric coordinates. Ratio between the area of the triangle 
 				// and ratio of the area of each vx,vy,pixel. Note that we do not divide by 2, as it cancels out.
@@ -254,31 +281,24 @@ void NRaster::RasterTriangle(const RenderState& renderState, Vertex* vtx)
 
 				// Depth test [LESS_THAN]:
 				float pixelDepth = 1.0f / (rasterv0.z * w0 + rasterv1.z * w1 + rasterv2.z * w2);
-				if (pixelDepth < depthBuffer[sy * width + sx])
+				if (pixelDepth < curDepthRow[sx])
 				{
 					// Update depth buffer:
-					depthBuffer[sy * width + sx] = pixelDepth;
+					curDepthRow[sx] = pixelDepth;
 
 					// Perspective correct attributes:
-					glm::vec2 TexCoord = (rasterTexCoord0 * w0 + rasterTexCoord1 * w1 + rasterTexCoord2 * w2) * pixelDepth;
-					glm::vec3 Normal = (rasterNormal0 * w0 + rasterNormal1 * w1 + rasterNormal2 * w2) * pixelDepth;
+					Vertex interpolatedData;
+					interpolatedData.Normal = (rasterNormal0 * w0 + rasterNormal1 * w1 + rasterNormal2 * w2) * pixelDepth;
+					interpolatedData.TexCoord = (rasterTexCoord0 * w0 + rasterTexCoord1 * w1 + rasterTexCoord2 * w2) * pixelDepth;
 
 					// Pixel shader:
-					Vertex interpolatedData;
-					interpolatedData.Normal = Normal;
-					interpolatedData.TexCoord = TexCoord;
 					glm::vec4 pixel = renderState.PixelShader(interpolatedData);
 
 					// Pixel color:
-					PixelRGBA32* cur = &pixels[sy * width + sx];
-
-					PixelRGBA32 newPixel;
-					newPixel.R = uint8_t(pixel.x * 255.0f);
-					newPixel.G = uint8_t(pixel.y * 255.0f);
-					newPixel.B = uint8_t(pixel.z * 255.0f);
-					newPixel.A = 0xff;
-
-					*cur = newPixel;
+					curPixelRow[sx].R = (uint8_t)(pixel.r * 255.0f);
+					curPixelRow[sx].G = (uint8_t)(pixel.g * 255.0f);
+					curPixelRow[sx].B = (uint8_t)(pixel.b * 255.0f);
+					curPixelRow[sx].A = (uint8_t)(pixel.a * 255.0f);
 				}
 			}
 		}

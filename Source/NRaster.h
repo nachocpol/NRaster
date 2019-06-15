@@ -17,9 +17,6 @@ namespace tthread
 	class thread;
 };
 
-typedef glm::vec4(*VertexShaderFn)(const Vertex& vertex);
-typedef glm::vec4(*PixelShaderFn)(const Vertex& vertex);
-
 struct PixelRGBA32
 {
 	uint8_t A;
@@ -55,6 +52,16 @@ struct PixelFormat
 	};
 };
 
+struct VertexRenderData
+{
+	glm::mat4 Transform;
+	glm::mat4 View;
+	glm::mat4 Projection;
+};
+
+typedef glm::vec4(*VertexShaderFn)(const Vertex& vertex, const VertexRenderData& renderData);
+typedef glm::vec4(*PixelShaderFn)(const Vertex& vertex);
+
 struct RenderState
 {
 	PixelRGBA32* RenderTarget;
@@ -89,6 +96,7 @@ public:
 	void SetDepthBuffer(float* data);
 	void SetShaders(VertexShaderFn vertexShader, PixelShaderFn pixelShader);
 	void Draw(Vertex* data, uint32_t numVertices);
+	void SetTransforms(glm::mat4 transform, glm::mat4 view, glm::mat4 projection);
 
 	void DebugDraw(SDL_Renderer* renderer);
 
@@ -125,5 +133,10 @@ private:
 	std::vector<BinnedTriangle>* m_bins;
 
 	RenderState m_renderState;
+
+	glm::mat4 m_curTransform;
+	glm::mat4 m_curView;
+	glm::mat4 m_curProjection;
+
 	static NRaster* m_instance;
 };
