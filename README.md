@@ -1,7 +1,5 @@
 # NRaster
 
-![Teapot](Data/Pics/RasterProgress.png?raw=true "Utah Teapot")
-
 My implementation of a software rasterizer. 
 
 ## How to build
@@ -22,3 +20,6 @@ NRaster uses premake5 to generate the project. The project comes with GenerateSo
 * glm
 * Premake5
 * tinythreds
+
+![Teapot](Data/Pics/RasterProgress.png?raw=true "Utah Teapot")
+![Scene](Data/Pics/AnotherScene.png?raw=true "Scene")
