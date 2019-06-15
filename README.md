@@ -1,6 +1,6 @@
 # NRaster
 
-![Teapot](Data/Pics/RasterProgress.jpg?raw=true "Utah Teapot")
+![Teapot](Data/Pics/RasterProgress.png?raw=true "Utah Teapot")
 
 My implementation of a software rasterizer. 
 
