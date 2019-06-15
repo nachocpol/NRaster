@@ -96,6 +96,8 @@ int main(int, char**)
 		SDL_RenderCopy(gContext.Renderer, gContext.Framebuffer, NULL, NULL);
 
 		// Debug depth buffer:
+		bool debugDebug = false;
+		if(debugDebug)
 		{
 			void* debugDepth = nullptr;
 			int pitch;
@@ -122,7 +124,9 @@ int main(int, char**)
 			SDL_RenderCopy(gContext.Renderer, gContext.DepthBufferDebug, NULL, &target);
 		}
 
+#if 0
 		NRaster::Instance()->DebugDraw(gContext.Renderer);
+#endif
 
 		// Present.
 		SDL_RenderPresent(gContext.Renderer);
@@ -248,12 +252,13 @@ static float curtime = 0.0f;
 glm::vec4 MyVertexShader(const Vertex& vertex)
 {
 	auto worldFromObject = glm::mat4();
+	worldFromObject = glm::translate(worldFromObject,glm::vec3(0.0f, -0.5f, 0.0f));
 	worldFromObject = glm::scale(worldFromObject, glm::vec3(0.02f, 0.02f, 0.02f));
 	worldFromObject = glm::rotate(worldFromObject, curtime, glm::vec3(0.0f, 1.0f, 0.0f));
 
 	//worldFromObject = glm::mat4();
 
-	auto viewFromWorld = glm::lookAtLH(glm::vec3(0.0f, 2.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	auto viewFromWorld = glm::lookAtLH(glm::vec3(0.0f, 2.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	auto screenFromView = glm::perspectiveFovLH(glm::radians(75.0f), (float)gContext.Width, (float)gContext.Height, 0.05f, 10.0f);
 
 	return screenFromView * viewFromWorld * worldFromObject * vertex.Position;
@@ -275,5 +280,5 @@ void RenderScene(PixelRGBA32* pixels, int width, int height)
 	NRaster::Instance()->SetShaders(MyVertexShader, MyPixelShader);
 	NRaster::Instance()->Draw(cubeModel.GetAllVertex(), cubeModel.GetNumVertices());
 
-	curtime += 0.014f;
+	//curtime += 0.014f;
 }
